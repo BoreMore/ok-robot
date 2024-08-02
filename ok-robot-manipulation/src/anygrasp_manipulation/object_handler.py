@@ -71,13 +71,19 @@ class ObjectHandler:
         else:
             head_tilt = -45
             data_dir = "./example_data/"
-            colors = np.array(Image.open(os.path.join(data_dir, "test_rgb.png")))
-            image = Image.open(os.path.join(data_dir, "test_rgb.png"))
-            depths = np.array(Image.open(os.path.join(data_dir, "test_depth.png")))
+
+            base_width = 240
+            img_orig = Image.open(os.path.join(data_dir, "test_rgb.png"))
+            wpercent = (base_width / float(img_orig.size[0]))
+            hsize = int((float(img_orig.size[1]) * float(wpercent)))
+            
+            image = img_orig.resize((base_width, hsize), Image.Resampling.LANCZOS)
+            colors = np.array(image)
+            depths = np.array(Image.open(os.path.join(data_dir, "test_depth.png")).resize((base_width, hsize)))
             fx, fy, cx, cy, scale = 306, 306, 118, 211, 0.001
             if tries == 1:
                 self.action = str(input("Enter action [pick/place]: "))
-                self.query = str(input("Enter a Object name in the scence: "))
+                self.query = str(input("Enter a Object name in the scene: "))
             depths = depths * scale
 
         # Camera Parameters
@@ -162,7 +168,10 @@ class ObjectHandler:
             points = get_3d_points(self.cam)
 
             if self.action == "place":
-                retry = not self.place(points, seg_mask)
+                try:
+                    retry = not self.place(points, seg_mask)
+                except:
+                    retry = True
             else:
                 retry = not self.pickup(points, seg_mask, bbox, (tries == 11))
 
