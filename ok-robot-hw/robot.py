@@ -313,7 +313,4 @@ class HelloRobot:
         self.updateJoints()
         for joint_index in range(self.joint_array.rows()):
             self.joint_array[joint_index] = self.joints[self.joint_list[joint_index]]
-        
-
-
-
+    

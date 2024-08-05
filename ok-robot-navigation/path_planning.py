@@ -9,67 +9,9 @@ import torch
 from omegaconf import OmegaConf
 from torch import Tensor
 
-import zmq
 
 # Set matplotlib backedn to "pdf" to prevent any conflicts with open3d
 import matplotlib
-
-matplotlib.use("pdf")
-from matplotlib import pyplot as plt
-import open3d as o3d
-
-import sys
-
-sys.path.append("voxel_map")
-
-from a_star.map_util import (
-    get_ground_truth_map_from_dataset,
-    get_occupancy_map_from_dataset,
-)
-from a_star.path_planner import PathPlanner
-from a_star.data_util import get_posed_rgbd_dataset
-from voxel_map_localizer import VoxelMapLocalizer
-from a_star.visualizations import visualize_path
-
-import math
-import os
-
-import sys
-
-sys.path.append("voxel_map")
-
-from dataloaders import (
-    R3DSemanticDataset,
-    OWLViTLabelledDataset,
-)
-
-
-def load_socket(port_number):
-    context = zmq.Context()
-    socket = context.socket(zmq.REP)
-    socket.bind("tcp://*:" + str(port_number))
-
-    return socket
-
-
-def send_array(socket, A, flags=0, copy=True, track=False):
-    """send a numpy array with metadata"""
-    A = np.array(A)
-    md = dict(
-        dtype=str(A.dtype),
-        shape=A.shape,
-    )
-    socket.send_json(md, flags | zmq.SNDMORE)
-    return socket.send(np.ascontiguousarray(A), flags, copy=copy, track=track)
-
-
-def recv_array(socket, flags=0, copy=True, track=False):
-    """recv a numpy array"""
-    md = socket.recv_json(flags=flags)
-    msg = socket.recv(flags=flags, copy=copy, track=track)
-    A = np.frombuffer(msg, dtype=md["dtype"])
-    return A.reshape(md["shape"])
-
 
 def load_dataset(cfg):
     if os.path.exists(cfg.cache_path):
@@ -106,8 +48,6 @@ def load_dataset(cfg):
 def main(cfg):
     cfg = OmegaConf.structured(OmegaConf.to_yaml(cfg))
     semantic_memory = load_dataset(cfg)
-    if not cfg.debug:
-        socket = load_socket(cfg.port_number)
     conservative = cfg.map_type == "conservative_vlmap"
     # ceil height is set to floor height+1.5, as objects higher than that will not obstruct robots anymore 
     cfg.max_height = cfg.min_height + 1.5
@@ -135,15 +75,31 @@ def main(cfg):
     )
 
     while True:
-        if cfg.debug:
-            A = input("A: ")
+        if cfg.debug: # no socket communication
+            A = input("A: ") # will need these inputs from language inputs 
             B = input("B: ")
+            # get start_xy from robot (get current position and orientation somehow, assume robot is on tapes)
             end_xyz = localizer.localize_AonB(A, B)
             end_xy = end_xyz[:2]
+            try:
+                paths = planner.plan(
+                    start_xy=(0.005, 0.698), end_xy=end_xy, remove_line_of_sight_points=True
+                )
+            except:
+                # Sometimes, start_xyt might be an occupied obstacle point, in this case, A* is going to throw an error
+                # In this case, we will throw an error and still visualize
+                print(
+                    'A* planner said that your robot stands on an occupied point,\n\
+                    it might be either your hector slam is not tracking robot current position,\n\
+                    or your min_height or max_height is set to incorrect value so obstacle map is not accurate!'
+                )
+                paths = None
+            print(paths)
             if cfg.pointcloud_visualization:
-                visualize_path(None, end_xyz, cfg)
-        else:
-            print("Waiting for the data from Robot")
+                visualize_path(paths, end_xyz, cfg) # visualize_path(None, end_xyz, cfg)
+
+        else: ########### what we need to rewrite using ROS2 communication ########### 
+            """print("Waiting for the data from Robot")
             start_xyt = recv_array(socket)
             print(start_xyt)
             socket.send_string("xyt received")
@@ -153,7 +109,13 @@ def main(cfg):
             socket.send_string("A received")
             B = socket.recv_string()
             print(B)
-            socket.send_string("B received")
+            socket.send_string("B received")"""
+            # NEED TO GET FROM ROBOT: A and B, EXTRACTED FROM USER INPUT VIA LLM
+            start_xyt = (0.005, 0.698) # get automatically later
+            # NEED TO GET FROM USER INPUT
+            A = 'trash bin'
+            B = 'floor'
+
             end_xyz = localizer.localize_AonB(A, B)
             end_xy = end_xyz[:2]
             try:
@@ -174,11 +136,11 @@ def main(cfg):
             end_pt = planner.a_star_planner.to_pt(paths[-1][:2])
             theta = paths[-1][2] if paths[-1][2] > 0 else paths[-1][2] + 2 * np.pi
 
-            print(socket.recv_string())
-            send_array(socket, paths)
-            print(socket.recv_string())
-            send_array(socket, end_xyz)
-            print(paths)
+            # NEED TO SEND TO ROBOT
+            #send_array(socket, paths)spectacular ai 
+            #send_array(socket, end_xyz)
+            #print(paths)
+            #########################################################################
         fig, axes = plt.subplots(2, 1, figsize=(8, 8))
 
         # Draw paths only when path planning is done successfully
@@ -217,6 +179,8 @@ def main(cfg):
             os.makedirs(cfg.save_file + "/" + A)
         print(cfg.save_file + "/" + A + "/navigation_vis.jpg")
         fig.savefig(cfg.save_file + "/" + A + "/navigation_vis.jpg")
+
+        return paths, end_xyz
 
 
 if __name__ == "__main__":
