@@ -87,7 +87,7 @@ class OKRobotNode(hm.HelloNode):
 
     def send_waypoints(self):
         if path_planning is not None and self.joint_state is not None:
-            path, end_xyz = path_planning.main(debug=False)
+            path, end_xyz = path_planning.main(['path_planning.py', 'debug=False', 'dataset_path=r3d/2024-08-05--ExperimentRoom_Take1.r3d', 'cache_path=experimentroom.pt', 'pointcloud_path=experimentroom.ply', 'pointcloud_visualization=True', 'min_height=-1.3'])
 
             # Compute start_xy of the robot
             start_xy = hm.HelloNode.get_robot_floor_pose_xya()[0][:2] # robot.nav.get_base_pose()
