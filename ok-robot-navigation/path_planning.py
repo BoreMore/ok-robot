@@ -13,7 +13,7 @@ from torch import Tensor
 # Set matplotlib backedn to "pdf" to prevent any conflicts with open3d
 import matplotlib
 
-matplotlib.use("pdf")
+#matplotlib.use("pdf")
 from matplotlib import pyplot as plt
 import open3d as o3d
 
@@ -235,16 +235,23 @@ def main(cfg):
             v = np.array([x, y, 0, 1])
             v_transformed = tf_inv @ v
 
-            transformed_paths.append(v_transformed)
+            transformed_paths.append(v_transformed[:2].tolist())
+
+        transformed_paths = np.array(transformed_paths)
+        plt.plot(transformed_paths)
+        plt.show()
+        print(tf)
   
         transformed_end_xyz = tf_inv @ np.array([end_xyz[0], end_xyz[1], end_xyz[2], 1])
 
+        print(transformed_paths)
+        print(transformed_end_xyz)
 
         with open("print_paths.txt", "w") as f:
             f.write(str(transformed_paths) + "\n" + str(transformed_end_xyz))
         
 
-        with open("path_result_orig.pkl", 'wb') as f:
+        with open("path_result_transformed.pkl", 'wb') as f:
             pickle.dump([transformed_paths, transformed_end_xyz], f)
 
         return paths, end_xyz
