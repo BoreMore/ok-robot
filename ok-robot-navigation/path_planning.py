@@ -13,6 +13,47 @@ from torch import Tensor
 # Set matplotlib backedn to "pdf" to prevent any conflicts with open3d
 import matplotlib
 
+matplotlib.use("pdf")
+from matplotlib import pyplot as plt
+import open3d as o3d
+
+import sys
+
+sys.path.append("voxel_map")
+
+from a_star.map_util import (
+    get_ground_truth_map_from_dataset,
+    get_occupancy_map_from_dataset,
+)
+from a_star.path_planner import PathPlanner
+from a_star.data_util import get_posed_rgbd_dataset
+from voxel_map_localizer import VoxelMapLocalizer
+from a_star.visualizations import visualize_path
+
+import math
+import os
+
+import sys
+import pickle
+
+sys.path.append("voxel_map")
+
+from dataloaders import (
+    R3DSemanticDataset,
+    OWLViTLabelledDataset,
+)
+
+from skspatial.objects import Vector
+from skspatial.plotting import plot_2d
+from skspatial.objects import Point
+
+
+from mpl_toolkits.mplot3d import Axes3D
+
+import transformation_helper as th
+from numpy.linalg import inv
+
+
 def load_dataset(cfg):
     if os.path.exists(cfg.cache_path):
         if (
@@ -42,7 +83,6 @@ def load_dataset(cfg):
     torch.save(semantic_memory, cfg.cache_path)
     print("\n\nSemantic memory ready!\n\n")
     return semantic_memory
-
 
 @hydra.main(version_base="1.2", config_path="configs", config_name="path.yaml")
 def main(cfg):
@@ -83,7 +123,7 @@ def main(cfg):
             end_xy = end_xyz[:2]
             try:
                 paths = planner.plan(
-                    start_xy=(0.005, 0.698), end_xy=end_xy, remove_line_of_sight_points=True
+                    start_xy=(0.0662, 0.4505), end_xy=end_xy, remove_line_of_sight_points=True
                 )
             except:
                 # Sometimes, start_xyt might be an occupied obstacle point, in this case, A* is going to throw an error
@@ -111,10 +151,10 @@ def main(cfg):
             print(B)
             socket.send_string("B received")"""
             # NEED TO GET FROM ROBOT: A and B, EXTRACTED FROM USER INPUT VIA LLM
-            start_xyt = (0.005, 0.698) # get automatically later
+            start_xyt = (0.0662, 0.4505) # get automatically later
             # NEED TO GET FROM USER INPUT
-            A = 'trash bin'
-            B = 'floor'
+            A = 'tennis ball'
+            B = 'chair'
 
             end_xyz = localizer.localize_AonB(A, B)
             end_xy = end_xyz[:2]
@@ -179,6 +219,33 @@ def main(cfg):
             os.makedirs(cfg.save_file + "/" + A)
         print(cfg.save_file + "/" + A + "/navigation_vis.jpg")
         fig.savefig(cfg.save_file + "/" + A + "/navigation_vis.jpg")
+
+        # HARDCODED POINTS
+        p1 = Point([0.066222, 0.450469, -1.183902])
+        p2 = Point([0.366797, 0.509809, -1.183809])
+        p3 = Point([0.156285, 0.749222, -1.186817])
+
+        transformed_paths = []
+
+        tf = th.get_transform_matrix(p1, p2, p3)
+        tf_inv = inv(tf)
+
+        for path in paths:
+            x, y, theta = path
+            v = np.array([x, y, 0, 1])
+            v_transformed = tf_inv @ v
+
+            transformed_paths.append(v_transformed)
+  
+        transformed_end_xyz = tf_inv @ np.array([end_xyz[0], end_xyz[1], end_xyz[2], 1])
+
+
+        with open("print_paths.txt", "w") as f:
+            f.write(str(transformed_paths) + "\n" + str(transformed_end_xyz))
+        
+
+        with open("path_result_orig.pkl", 'wb') as f:
+            pickle.dump([transformed_paths, transformed_end_xyz], f)
 
         return paths, end_xyz
 
