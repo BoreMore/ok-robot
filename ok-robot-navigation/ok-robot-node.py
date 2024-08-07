@@ -53,18 +53,16 @@ class OKRobotNode(hm.HelloNode):
 
 
     def send_waypoints(self):
-        path, start_xyz, end_xyz = None, None, None
+        path, end_xyz = None, None, None
         #if self.joint_state is not None:
             #path, end_xyz = path_planning.main(['path_planning.py', 'debug=False', 'dataset_path=r3d/2024-08-05--ExperimentRoom_Take2.r3d', 'cache_path=experimentroom.pt', 'pointcloud_path=experimentroom.ply', 'pointcloud_visualization=True', 'min_height=-1.3'])
 
         with open('path_result_transformed.pkl', 'rb') as f:  # Python 3: open(..., 'rb')
-             path, start_xyz, end_xyz = pickle.load(f)
+             path, end_xyz = pickle.load(f)
 
         print('from pkl: path = ', path)
-        print('from pkl: start_xyz = ', start_xyz)
         print('from pkl: end_xyz = ', end_xyz)
         #time.sleep(20)
-        # start_xyz = np.array(start_xyz) = [0, 0, 0]
         initial_position = self.current_position
         prev_waypoint = initial_position
         self.theta_inc = 0.0
@@ -149,7 +147,7 @@ class OKRobotNode(hm.HelloNode):
 
     
     # Node main
-    def main(self, start_xyz):
+    def main(self):
         while rclpy.ok():
             rclpy.spin_once(self)
             path, end_xyz = self.send_waypoints()
@@ -163,7 +161,7 @@ def main():
         #rclpy.init(args=args)
         start_xyz = [0.066222, 0.450469, -1.183902] # same as p1 in path planning
         ok_robot_node = OKRobotNode()
-        ok_robot_node.main(start_xyz)
+        ok_robot_node.main()
 
     except KeyboardInterrupt:
         ok_robot_node.get_logger().info('Keyboard Interrupt. Shutting Down OKRobotNode...')
