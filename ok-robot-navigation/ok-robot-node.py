@@ -4,9 +4,11 @@ from rclpy.duration import Duration
 
 import math
 import hello_helpers.hello_misc as hm
+from scipy.spatial.transform import Rotation as R
 
 
 from std_msgs.msg import Int32, String
+from nav_msgs.msg import Odometry
 from geometry_msgs.msg import Twist
 from sensor_msgs.msg import JointState
 from trajectory_msgs.msg import JointTrajectoryPoint
@@ -29,31 +31,59 @@ class OKRobotNode(hm.HelloNode):
     def __init__(self):
         hm.HelloNode.__init__(self)
         hm.HelloNode.main(self, 'ok_robot_node', 'ok_robot_node', wait_for_first_pointcloud=False)
+        self.current_position = None
+
         #self.joint_state = None 
         #self.create_subscription(JointState, '/stretch/joint_states', self.joint_states_callback, 1)
+        print("INITIALIZE SUBSCRIBER")
+        self.create_subscription(Odometry, '/odom', self.current_position_callback, 1)
+        time.sleep(0.1)
 
 
     # def joint_states_callback(self, msg):
     #     self.joint_state = msg
 
+    def current_position_callback(self, msg):
+        self.current_position = np.array([msg.pose.pose.position.x, msg.pose.pose.position.y])
+        self.current_q = np.array([msg.pose.pose.orientation.x, msg.pose.pose.orientation.y, msg.pose.pose.orientation.z, msg.pose.pose.orientation.w])
+        self.current_r = R.from_quat(self.current_q)
+        self.current_yaw, self.current_pitch, self.current_roll = self.current_r.as_euler("ZYX")
+        print("===> BASE x: %.4f, y: %.4f, yaw: %.4f" % (msg.pose.pose.position.x, msg.pose.pose.position.y, self.current_yaw))
+        # self.current_yaw = np.array([msg.pose.pose.orientation.z])
 
-    def send_waypoints(self, start_xyz):
-        path, end_xyz = None, None
+
+    def send_waypoints(self):
+        path, start_xyz, end_xyz = None, None, None
         #if self.joint_state is not None:
             #path, end_xyz = path_planning.main(['path_planning.py', 'debug=False', 'dataset_path=r3d/2024-08-05--ExperimentRoom_Take2.r3d', 'cache_path=experimentroom.pt', 'pointcloud_path=experimentroom.ply', 'pointcloud_visualization=True', 'min_height=-1.3'])
 
         with open('path_result_transformed.pkl', 'rb') as f:  # Python 3: open(..., 'rb')
-             path, end_xyz = pickle.load(f)
+             path, start_xyz, end_xyz = pickle.load(f)
 
         print('from pkl: path = ', path)
+        print('from pkl: start_xyz = ', start_xyz)
         print('from pkl: end_xyz = ', end_xyz)
         #time.sleep(20)
-        curr_point = start_xyz
+        # start_xyz = np.array(start_xyz) = [0, 0, 0]
+        initial_position = self.current_position
+        prev_waypoint = initial_position
+        self.theta_inc = 0.0
         for waypoint in path:
-            self.navigate(curr_point, waypoint)
-            curr_point = waypoint
+            waypoint[0] = -1.0 * waypoint[0]
+            waypoint = np.array(waypoint) + initial_position
+            print('waypoint', waypoint)
+            self.navigate(prev_waypoint, waypoint)
+            prev_waypoint = waypoint
         print('Done sending all waypoints. Navigation is complete.')
         return path, end_xyz
+    
+        print("The robot is currently located at " + str(xyt_curr))
+#             if np.allclose(xyt_curr[:2], xyt_goal[:2], atol=POS_TOL) and \
+#                     (np.allclose(xyt_curr[2], xyt_goal[2], atol=YAW_TOL)\
+#                     or np.allclose(xyt_curr[2], xyt_goal[2] + np.pi * 2, atol=YAW_TOL)\
+#                     or np.allclose(xyt_curr[2], xyt_goal[2] - np.pi * 2, atol=YAW_TOL)):
+#                 print("The robot is finally at " + str(xyt_goal))
+#                 break
         
 
     def navigate(self, xyt_curr, xyt_goal):
@@ -61,12 +91,16 @@ class OKRobotNode(hm.HelloNode):
             An closed loop controller to move the robot from current positions to [x, y, theta]
             - xyt_goal: target [x, y, theta] we want the robot to go
         '''
+        
+        # Closed loop navigation
+#         while True:
 
         # xyt_goal = np.asarray(xyt_goal)
             
         # theta_inc = xyt_goal[2] - xyt_curr[2]
         # from Orrin's old code: theta = math.atan2(xyt_goal[1] - xyt_curr[1], xyt_goal[0] - xyt_curr[0])
-        theta_inc = np.arctan((xyt_goal[0] - xyt_curr[0])/(xyt_goal[1] - xyt_curr[1]))
+        yaw_target = np.arctan((xyt_goal[0] - xyt_curr[0])/(xyt_goal[1] - xyt_curr[1]))
+        theta_inc = yaw_target - self.current_yaw
         linear_inc = math.sqrt((xyt_goal[1] - xyt_curr[1])**2 + (xyt_goal[0] - xyt_curr[0])**2)
     
         # robot.nav.navigate_to(xyt_goal, blocking = False)
@@ -84,7 +118,7 @@ class OKRobotNode(hm.HelloNode):
         #self.get_logger().info('joint_name = {0}, trajectory_goal = {1}'.format(joint_name, trajectory_goal))
         # Make the action call and send goal of the new joint position
         self.trajectory_client.send_goal_async(trajectory_goal)
-        #time.sleep(5)
+        time.sleep(5)
         self.get_logger().info('Done sending rotation command.')
 
         trajectory_goal.trajectory.joint_names = ['translate_mobile_base']
@@ -94,18 +128,33 @@ class OKRobotNode(hm.HelloNode):
         #self.get_logger().info('joint_name = {0}, trajectory_goal = {1}'.format(joint_name, trajectory_goal))
         # Make the action call and send goal of the new joint position
         self.trajectory_client.send_goal_async(trajectory_goal)
-        #time.sleep(5)
+        time.sleep(5)
         self.get_logger().info('Done sending linear translation command.')
-        
+
+        print("x: %.4f, y: %.4f, yaw: %.4f" % (self.current_position[0], self.current_position[0], self.current_yaw))
+
+#			 # xyt_curr = robot.nav.get_base_pose()
+#             xyt_curr = hm.HelloNode.get_robot_floor_pose_xya()[0]
+
+#             print("The robot is currently located at " + str(xyt_curr))
+#             if np.allclose(xyt_curr[:2], xyt_goal[:2], atol=POS_TOL) and \
+#              if np.allclose(xyt_curr[:2], xyt_goal[:2], atol=POS_TOL) and \
+#                     (np.allclose(xyt_curr[2], xyt_goal[2], atol=YAW_TOL)\
+#                     or np.allclose(xyt_curr[2], xyt_goal[2] + np.pi * 2, atol=YAW_TOL)\
+#                     or np.allclose(xyt_curr[2], xyt_goal[2] - np.pi * 2, atol=YAW_TOL)):
+#                 print("The robot is finally at " + str(xyt_goal))
+#                 break
+        # self.current_position = xyt_goal
+        # self.current_yaw = yaw_target
+
     
     # Node main
-    def main(self):
+    def main(self, start_xyz):
         while rclpy.ok():
             rclpy.spin_once(self)
-            end_xyz, final_path = self.send_waypoints()
+            path, end_xyz = self.send_waypoints()
             print(end_xyz)
-            print(final_path)
-            ### insert code for moving
+            print(path)
         
 
 def main():
@@ -114,7 +163,7 @@ def main():
         #rclpy.init(args=args)
         start_xyz = [0.066222, 0.450469, -1.183902] # same as p1 in path planning
         ok_robot_node = OKRobotNode()
-        ok_robot_node.main()
+        ok_robot_node.main(start_xyz)
 
     except KeyboardInterrupt:
         ok_robot_node.get_logger().info('Keyboard Interrupt. Shutting Down OKRobotNode...')
