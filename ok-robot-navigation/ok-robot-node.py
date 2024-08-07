@@ -14,6 +14,8 @@ from sensor_msgs.msg import JointState
 from trajectory_msgs.msg import JointTrajectoryPoint
 from control_msgs.action import FollowJointTrajectory
 
+from rclpy.qos import QoSProfile, QoSReliabilityPolicy, QoSHistoryPolicy, QoSDurabilityPolicy
+
 #import path_planning
 
 import time
@@ -33,10 +35,17 @@ class OKRobotNode(hm.HelloNode):
         hm.HelloNode.main(self, 'ok_robot_node', 'ok_robot_node', wait_for_first_pointcloud=False)
         self.current_position = None
 
+        qos_profile = QoSProfile(
+            reliability=QoSReliabilityPolicy.RMW_QOS_POLICY_RELIABILITY_BEST_EFFORT,
+            history=QoSHistoryPolicy.RMW_QOS_POLICY_HISTORY_KEEP_LAST,
+            durability=QoSDurabilityPolicy.RMW_QOS_POLICY_DURABILITY_VOLATILE,
+            depth=30,
+        )
+
         #self.joint_state = None 
         #self.create_subscription(JointState, '/stretch/joint_states', self.joint_states_callback, 1)
         print("INITIALIZE SUBSCRIBER")
-        self.create_subscription(Odometry, '/odom', self.current_position_callback, 1)
+        self.create_subscription(Odometry, '/odom', self.current_position_callback, qos_profile)
         time.sleep(0.1)
 
 
@@ -67,7 +76,7 @@ class OKRobotNode(hm.HelloNode):
         prev_waypoint = initial_position
         self.theta_inc = 0.0
         for waypoint in path:
-            waypoint[0] = -1.0 * waypoint[0]
+            waypoint[1] = -1.0 * waypoint[1]
             waypoint = np.array(waypoint) + initial_position
             print('waypoint', waypoint)
             self.navigate(prev_waypoint, waypoint)
