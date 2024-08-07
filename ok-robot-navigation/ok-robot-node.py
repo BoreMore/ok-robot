@@ -34,6 +34,8 @@ class OKRobotNode(hm.HelloNode):
         hm.HelloNode.__init__(self)
         hm.HelloNode.main(self, 'ok_robot_node', 'ok_robot_node', wait_for_first_pointcloud=False)
         self.current_position = None
+        self.position_tolerance = 2.0 # change value, current is random
+        self.yaw_tolerance = 0.1 # unit? should it be rad?
 
         qos_profile = QoSProfile(
             reliability=QoSReliabilityPolicy.RMW_QOS_POLICY_RELIABILITY_BEST_EFFORT,
@@ -98,61 +100,62 @@ class OKRobotNode(hm.HelloNode):
             An closed loop controller to move the robot from current positions to [x, y, theta]
             - xyt_goal: target [x, y, theta] we want the robot to go
         '''
-        
+        target_reached = False
         # Closed loop navigation
-#         while True:
+        while not target_reached:
+            # xyt_goal = np.asarray(xyt_goal)
+            yaw_target = np.arctan((xyt_goal[0] - xyt_curr[0])/(xyt_goal[1] - xyt_curr[1]))
+            theta_inc = yaw_target - self.current_yaw
+            linear_inc = math.sqrt((xyt_goal[1] - xyt_curr[1])**2 + (xyt_goal[0] - xyt_curr[0])**2)
+        
+            # robot.nav.navigate_to(xyt_goal, blocking = False)
+            point = JointTrajectoryPoint()
+            point.time_from_start = Duration(seconds=0).to_msg()
 
-        # xyt_goal = np.asarray(xyt_goal)
-            
-        # theta_inc = xyt_goal[2] - xyt_curr[2]
-        # from Orrin's old code: theta = math.atan2(xyt_goal[1] - xyt_curr[1], xyt_goal[0] - xyt_curr[0])
-        yaw_target = np.arctan((xyt_goal[0] - xyt_curr[0])/(xyt_goal[1] - xyt_curr[1]))
-        theta_inc = yaw_target - self.current_yaw
-        linear_inc = math.sqrt((xyt_goal[1] - xyt_curr[1])**2 + (xyt_goal[0] - xyt_curr[0])**2)
-    
-        # robot.nav.navigate_to(xyt_goal, blocking = False)
-        point = JointTrajectoryPoint()
-        point.time_from_start = Duration(seconds=0).to_msg()
+            # Assign trajectory_goal as a FollowJointTrajectoryGoal message prompt_type
+            trajectory_goal = FollowJointTrajectory.Goal()
+            trajectory_goal.goal_time_tolerance = Duration(seconds=0).to_msg()
 
-        # Assign trajectory_goal as a FollowJointTrajectoryGoal message prompt_type
-        trajectory_goal = FollowJointTrajectory.Goal()
-        trajectory_goal.goal_time_tolerance = Duration(seconds=0).to_msg()
+            trajectory_goal.trajectory.joint_names = ['rotate_mobile_base']
+            point.positions = [theta_inc]
+            trajectory_goal.trajectory.points = [point]
+            trajectory_goal.trajectory.header.stamp = self.get_clock().now().to_msg()
+            #self.get_logger().info('joint_name = {0}, trajectory_goal = {1}'.format(joint_name, trajectory_goal))
+            # Make the action call and send goal of the new joint position
+            self.trajectory_client.send_goal_async(trajectory_goal)
+            time.sleep(5)
+            self.get_logger().info('Done sending rotation command.')
 
-        trajectory_goal.trajectory.joint_names = ['rotate_mobile_base']
-        point.positions = [theta_inc]
-        trajectory_goal.trajectory.points = [point]
-        trajectory_goal.trajectory.header.stamp = self.get_clock().now().to_msg()
-        #self.get_logger().info('joint_name = {0}, trajectory_goal = {1}'.format(joint_name, trajectory_goal))
-        # Make the action call and send goal of the new joint position
-        self.trajectory_client.send_goal_async(trajectory_goal)
-        time.sleep(5)
-        self.get_logger().info('Done sending rotation command.')
+            trajectory_goal.trajectory.joint_names = ['translate_mobile_base']
+            point.positions = [linear_inc]
+            trajectory_goal.trajectory.points = [point]
+            trajectory_goal.trajectory.header.stamp = self.get_clock().now().to_msg()
+            #self.get_logger().info('joint_name = {0}, trajectory_goal = {1}'.format(joint_name, trajectory_goal))
+            # Make the action call and send goal of the new joint position
+            self.trajectory_client.send_goal_async(trajectory_goal)
+            time.sleep(5)
+            self.get_logger().info('Done sending linear translation command.')
 
-        trajectory_goal.trajectory.joint_names = ['translate_mobile_base']
-        point.positions = [linear_inc]
-        trajectory_goal.trajectory.points = [point]
-        trajectory_goal.trajectory.header.stamp = self.get_clock().now().to_msg()
-        #self.get_logger().info('joint_name = {0}, trajectory_goal = {1}'.format(joint_name, trajectory_goal))
-        # Make the action call and send goal of the new joint position
-        self.trajectory_client.send_goal_async(trajectory_goal)
-        time.sleep(5)
-        self.get_logger().info('Done sending linear translation command.')
+            print("x: %.4f, y: %.4f, yaw: %.4f" % (self.current_position[0], self.current_position[0], self.current_yaw))
 
-        print("x: %.4f, y: %.4f, yaw: %.4f" % (self.current_position[0], self.current_position[0], self.current_yaw))
+            if np.allclose(self.current_position, xyt_goal[:2], self.position_tolerance) and np.allclose(self.current_yaw, self.xyt_goal[2], self.yaw_tolerance):
+                target_reached = True
+                print("target_reached: ", target_reached, "The robot is finally at " + str(xyt_goal))
+            return
 
-#			 # xyt_curr = robot.nav.get_base_pose()
-#             xyt_curr = hm.HelloNode.get_robot_floor_pose_xya()[0]
+    #			 # xyt_curr = robot.nav.get_base_pose()
+    #             xyt_curr = hm.HelloNode.get_robot_floor_pose_xya()[0]
 
-#             print("The robot is currently located at " + str(xyt_curr))
-#             if np.allclose(xyt_curr[:2], xyt_goal[:2], atol=POS_TOL) and \
-#              if np.allclose(xyt_curr[:2], xyt_goal[:2], atol=POS_TOL) and \
-#                     (np.allclose(xyt_curr[2], xyt_goal[2], atol=YAW_TOL)\
-#                     or np.allclose(xyt_curr[2], xyt_goal[2] + np.pi * 2, atol=YAW_TOL)\
-#                     or np.allclose(xyt_curr[2], xyt_goal[2] - np.pi * 2, atol=YAW_TOL)):
-#                 print("The robot is finally at " + str(xyt_goal))
-#                 break
-        # self.current_position = xyt_goal
-        # self.current_yaw = yaw_target
+    #             print("The robot is currently located at " + str(xyt_curr))
+    #             if np.allclose(xyt_curr[:2], xyt_goal[:2], atol=POS_TOL) and \
+    #              if np.allclose(xyt_curr[:2], xyt_goal[:2], atol=POS_TOL) and \
+    #                     (np.allclose(xyt_curr[2], xyt_goal[2], atol=YAW_TOL)\
+    #                     or np.allclose(xyt_curr[2], xyt_goal[2] + np.pi * 2, atol=YAW_TOL)\
+    #                     or np.allclose(xyt_curr[2], xyt_goal[2] - np.pi * 2, atol=YAW_TOL)):
+    #                 print("The robot is finally at " + str(xyt_goal))
+    #                 break
+            # self.current_position = xyt_goal
+            # self.current_yaw = yaw_target
 
     
     # Node main
