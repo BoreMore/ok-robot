@@ -13,9 +13,11 @@ from scipy.spatial.transform import Rotation as R
 
 from sensor_msgs.msg import JointState
 from trajectory_msgs.msg import JointTrajectoryPoint
+from rclpy.action import ActionClient
 from control_msgs.action import FollowJointTrajectory
 from geometry_msgs.msg import Twist, PoseStamped
 import pickle
+import sys
 
 
 class MyOdometrySubscriber(Node):
@@ -26,11 +28,21 @@ class MyOdometrySubscriber(Node):
         # initialize subscriber and publisher
         #self.subscription = self.create_subscription(Odometry, '/odom', self.current_position_callback, 10)
         self.subscription = self.create_subscription(PoseStamped, '/stretch_vicon/hr_base/hr_base', self.current_position_callback, 10)
+        self.subscription_joint_state = self.create_subscription(JointState, '/stretch/joint_states', self.joint_states_callback, 1)
         self.subscription  # prevent unused variable warning
+        self.subscription_joint_state
         self.publisher_move = self.create_publisher(Twist, '/stretch/cmd_vel', 10)
         timer_period_move = 0.1  # seconds
         self.timer = self.create_timer(timer_period_move, self.move_to_target)
         self.state_callback_verbose = False
+        self.trajectory_client = ActionClient(self, FollowJointTrajectory, '/stretch_controller/follow_joint_trajectory')
+        server_reached = self.trajectory_client.wait_for_server(timeout_sec=15.0)
+        if not server_reached:
+            self.get_logger().error('Unable to connect to arm action server. Timeout exceeded.')
+            sys.exit()
+        else:
+            print('Server reached.')
+        self.joint_traj_duration = 4
 
         # initialize state feedback
         self.set_initial_state = False
@@ -47,8 +59,8 @@ class MyOdometrySubscriber(Node):
         self.navigation_complete = False
 
     def get_waypoints(self):
-        with open('/home/hornylemur/ament_ws/src/ok-robot/ok_robot_navigation/ok_robot_navigation/path_result_transformed_fixedyellowbottle.pkl', 'rb') as f:  # Python 3: open(..., 'rb')
-             self.path, _ = pickle.load(f)
+        with open('/home/hornylemur/ament_ws/src/ok-robot/ok_robot_navigation/ok_robot_navigation/path_result_transformed_fixedsoccer.pkl', 'rb') as f:  # Python 3: open(..., 'rb')
+            self.path, end_xyz = pickle.load(f)
         
         self.waypoint_number = len(self.path)
         print("%d waypoints loaded" % self.waypoint_number)
@@ -62,17 +74,16 @@ class MyOdometrySubscriber(Node):
             self.position = self.state[:2]
             yaw = self.state[2]
 
-            point_ahead_distance = 0.1
+            point_ahead_distance = 0.15
             point_ahead = self.position + point_ahead_distance * np.array([np.cos(yaw), np.sin(yaw)])
-            u = 0.35 * (self.target - point_ahead)
+            u = 0.3 * (self.target - point_ahead)
             self.v_cmd = np.cos(yaw) * u[0] + np.sin(yaw) * u[1]
-            self.omega_cmd = 1 / point_ahead_distance * (-np.sin(yaw) * u[0] + np.cos(yaw) * u[1])
+            self.omega_cmd = 0.5 / point_ahead_distance * (-np.sin(yaw) * u[0] + np.cos(yaw) * u[1])
             self.move_around()
-            # print("going to waypoint number %d | target (%.4f, %.4f) | actual (%.4f, %.4f)" % (self.current_waypoint_index, self.target[0], self.target[1], point_ahead[0], point_ahead[1]))
             print("going to waypoint number %d | target (%.4f, %.4f) | actual (%.4f, %.4f)" % (self.current_waypoint_index, self.target[0], self.target[1], self.position[0], self.position[1]))
             print("v: %.4f, omega: %.4f" % (self.v_cmd, self.omega_cmd))
 
-            if np.linalg.norm(self.target - self.position) <= 0.15:
+            if np.linalg.norm(self.target - point_ahead) <= 0.15:
                 self.current_waypoint_index += 1
                 if self.current_waypoint_index == self.waypoint_number:
                     self.navigation_complete = True
@@ -80,8 +91,53 @@ class MyOdometrySubscriber(Node):
                     self.omega_cmd = 0.0
                     print("path completed!")
                     raise SystemExit
+            
+            # self.move_arm(joint_lift=0.3, wrist_extension=0.2, joint_wrist_yaw=0.0, joint_wrist_pitch=-1.5)
+            # time.sleep(self.joint_traj_duration)
+            # self.close_gripper()
+            # time.sleep(self.joint_traj_duration)
+            # self.open_gripper()
+            # raise SystemExit
 
-    
+    def joint_states_callback(self, joint_state):
+        self.joint_state = joint_state
+
+    def move_arm(self, joint_lift, wrist_extension, joint_wrist_yaw, joint_wrist_pitch):
+        arm_point = JointTrajectoryPoint()
+        duration2 = Duration(seconds=self.joint_traj_duration)
+        arm_point.time_from_start = duration2.to_msg()
+        arm_point.positions = [joint_lift, wrist_extension, joint_wrist_yaw, joint_wrist_pitch] # pitch 0 is going out
+        trajectory_goal = FollowJointTrajectory.Goal()
+        trajectory_goal.trajectory.joint_names = ['joint_lift', 'wrist_extension', 'joint_wrist_yaw', 'joint_wrist_pitch']
+        trajectory_goal.trajectory.points = [arm_point]
+        trajectory_goal.trajectory.header.stamp = self.get_clock().now().to_msg()
+        trajectory_goal.trajectory.header.frame_id = 'base_link'
+        self.trajectory_client.send_goal_async(trajectory_goal)
+
+    def close_gripper(self, joint_gripper_finger_left=0.0):
+        arm_point = JointTrajectoryPoint()
+        duration2 = Duration(seconds=self.joint_traj_duration)
+        arm_point.time_from_start = duration2.to_msg()
+        arm_point.positions = [joint_gripper_finger_left] # gripper close is 0
+        trajectory_goal = FollowJointTrajectory.Goal()
+        trajectory_goal.trajectory.joint_names = ['joint_gripper_finger_left']
+        trajectory_goal.trajectory.points = [arm_point]
+        trajectory_goal.trajectory.header.stamp = self.get_clock().now().to_msg()
+        trajectory_goal.trajectory.header.frame_id = 'base_link'
+        self.trajectory_client.send_goal_async(trajectory_goal)
+
+    def open_gripper(self, joint_gripper_finger_left=1.0):
+        arm_point = JointTrajectoryPoint()
+        duration2 = Duration(seconds=self.joint_traj_duration)
+        arm_point.time_from_start = duration2.to_msg()
+        arm_point.positions = [joint_gripper_finger_left] # gripper close is 0
+        trajectory_goal = FollowJointTrajectory.Goal()
+        trajectory_goal.trajectory.joint_names = ['joint_gripper_finger_left']
+        trajectory_goal.trajectory.points = [arm_point]
+        trajectory_goal.trajectory.header.stamp = self.get_clock().now().to_msg()
+        trajectory_goal.trajectory.header.frame_id = 'base_link'
+        self.trajectory_client.send_goal_async(trajectory_goal)
+
     def move_around(self):
         command = Twist()
         command.linear.x = self.v_cmd
