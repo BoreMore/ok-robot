@@ -1,3 +1,7 @@
+# To run on hornywombat, type the following in Terminal:
+# mamba activate ok-robot-env
+# python path_planning.py debug=False dataset_path=r3d/2024-08-06--experimentroomtake3.r3d cache_path=experimentroom3.pt pointcloud_path=experiment3.ply pointcloud_visualization=True min_height=-1.17
+
 import hydra
 import math
 from pathlib import Path
@@ -139,22 +143,11 @@ def main(cfg):
                 visualize_path(paths, end_xyz, cfg) # visualize_path(None, end_xyz, cfg)
 
         else: ########### what we need to rewrite using ROS2 communication ########### 
-            """print("Waiting for the data from Robot")
-            start_xyt = recv_array(socket)
-            print(start_xyt)
-            socket.send_string("xyt received")
-            print("receive text query")
-            A = socket.recv_string()
-            print(A)
-            socket.send_string("A received")
-            B = socket.recv_string()
-            print(B)
-            socket.send_string("B received")"""
             # NEED TO GET FROM ROBOT: A and B, EXTRACTED FROM USER INPUT VIA LLM
             start_xyt = (0.0662, 0.4505) # get automatically later
             # NEED TO GET FROM USER INPUT
-            A = 'tennis ball'
-            B = 'chair'
+            A = 'soccer ball'
+            B = 'floor'
 
             end_xyz = localizer.localize_AonB(A, B)
             end_xy = end_xyz[:2]
@@ -220,7 +213,7 @@ def main(cfg):
         print(cfg.save_file + "/" + A + "/navigation_vis.jpg")
         fig.savefig(cfg.save_file + "/" + A + "/navigation_vis.jpg")
 
-        # HARDCODED POINTS
+        # HARDCODED POINTS -- CHANGE FOR VICON
         p1 = Point([0.066222, 0.450469, -1.183902])
         p2 = Point([0.366797, 0.509809, -1.183809])
         p3 = Point([0.156285, 0.749222, -1.186817])

@@ -38,11 +38,11 @@ class OKRobotNode(hm.HelloNode):
         self.yaw_tolerance = 0.1 # unit? should it be rad?
 
         qos_profile = QoSProfile(
-            reliability=QoSReliabilityPolicy.RMW_QOS_POLICY_RELIABILITY_BEST_EFFORT,
-            history=QoSHistoryPolicy.RMW_QOS_POLICY_HISTORY_KEEP_LAST,
-            durability=QoSDurabilityPolicy.RMW_QOS_POLICY_DURABILITY_VOLATILE,
+            reliability=QoSReliabilityPolicy.BEST_EFFORT,
+            history=QoSHistoryPolicy.KEEP_LAST,
+            durability=QoSDurabilityPolicy.VOLATILE,
             depth=30,
-        )
+        ) # tried depth=1 at some point, wasn't great
 
         #self.joint_state = None 
         #self.create_subscription(JointState, '/stretch/joint_states', self.joint_states_callback, 1)
@@ -64,7 +64,7 @@ class OKRobotNode(hm.HelloNode):
 
 
     def send_waypoints(self):
-        path, end_xyz = None, None, None
+        path, end_xyz = None, None
         #if self.joint_state is not None:
             #path, end_xyz = path_planning.main(['path_planning.py', 'debug=False', 'dataset_path=r3d/2024-08-05--ExperimentRoom_Take2.r3d', 'cache_path=experimentroom.pt', 'pointcloud_path=experimentroom.ply', 'pointcloud_visualization=True', 'min_height=-1.3'])
 
@@ -75,12 +75,14 @@ class OKRobotNode(hm.HelloNode):
         print('from pkl: end_xyz = ', end_xyz)
         #time.sleep(20)
         initial_position = self.current_position
+        print(initial_position)
         prev_waypoint = initial_position
         self.theta_inc = 0.0
         for waypoint in path:
-            waypoint[1] = -1.0 * waypoint[1]
+            #waypoint[0] = -1.0 * waypoint[0] # flipping x component to check if that makes the robot go in right direction
+            waypoint[1] = -1.0 * waypoint[1] # flip y components of waypoints such that +y matches robot base IMU's +y direction
             waypoint = np.array(waypoint) + initial_position
-            print('waypoint', waypoint)
+            print('prev_waypoint', prev_waypoint, 'waypoint', waypoint)
             self.navigate(prev_waypoint, waypoint)
             prev_waypoint = waypoint
         print('Done sending all waypoints. Navigation is complete.')
@@ -133,12 +135,17 @@ class OKRobotNode(hm.HelloNode):
             #self.get_logger().info('joint_name = {0}, trajectory_goal = {1}'.format(joint_name, trajectory_goal))
             # Make the action call and send goal of the new joint position
             self.trajectory_client.send_goal_async(trajectory_goal)
-            time.sleep(5)
+            time.sleep(10)
             self.get_logger().info('Done sending linear translation command.')
 
             print("x: %.4f, y: %.4f, yaw: %.4f" % (self.current_position[0], self.current_position[0], self.current_yaw))
 
-            if np.allclose(self.current_position, xyt_goal[:2], self.position_tolerance) and np.allclose(self.current_yaw, self.xyt_goal[2], self.yaw_tolerance):
+                # Alternative method:
+                # if (np.sqrt((self.current_position[0] - xyt_goal[0])**2 + (self.current_position[0] - xyt_goal[0])**2) < self.position_tolerance) and ((self.current_yaw - yaw_target) < self.yaw_tolerance):
+                #     target_reached = True
+                #     print("target_reached: ", target_reached, "The robot is finally at " + str(xyt_goal))
+                
+            if np.allclose(self.current_position, xyt_goal[:2], self.position_tolerance) and np.allclose(self.current_yaw, yaw_target, self.yaw_tolerance):
                 target_reached = True
                 print("target_reached: ", target_reached, "The robot is finally at " + str(xyt_goal))
             return
