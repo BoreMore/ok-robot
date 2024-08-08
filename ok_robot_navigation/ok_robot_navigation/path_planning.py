@@ -153,11 +153,26 @@ def main(cfg):
         else:
             start_xy = (0.861361, 1.809727) # corresponds to point (x, y) of point p1 in code below
             # LATER, NEED TO GET: A and B, EXTRACTED FROM USER INPUT VIA LLM. FOR NOW, INPUT MANUALLY HERE
-            A = 'soccer ball'
+            A = 'tennis ball'
             B = 'chair'
 
             end_xyz = localizer.localize_AonB(A, B)
-            end_xy = end_xyz[:2] ##
+            end_xy = end_xyz[:2]
+            try:
+                paths = planner.plan(
+                    start_xy=start_xy[:2], end_xy=end_xy, remove_line_of_sight_points=True
+                )
+            except:
+                # Sometimes, start_xy might be an occupied obstacle point, in this case, A* is going to throw an error
+                # In this case, we will throw an error and still visualize
+                print(
+                    'A* planner said that your robot stands on an occupied point,\n\
+                    it might be either your hector slam is not tracking robot current position,\n\
+                    or your min_height or max_height is set to incorrect value so obstacle map is not accurate!'
+                )
+                paths = None
+            if cfg.pointcloud_visualization:
+                visualize_path(paths, end_xyz, cfg)
             end_pt = planner.a_star_planner.to_pt(paths[-1][:2])
             theta = paths[-1][2] if paths[-1][2] > 0 else paths[-1][2] + 2 * np.pi
 
