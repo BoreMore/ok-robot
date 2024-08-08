@@ -153,8 +153,8 @@ def main(cfg):
         else:
             start_xy = (0.861361, 1.809727) # corresponds to point (x, y) of point p1 in code below
             # LATER, NEED TO GET: A and B, EXTRACTED FROM USER INPUT VIA LLM. FOR NOW, INPUT MANUALLY HERE
-            A = 'tennis ball'
-            B = 'chair'
+            A = 'soccer ball'
+            B = 'floor'
 
             end_xyz = localizer.localize_AonB(A, B)
             end_xy = end_xyz[:2]
@@ -252,7 +252,7 @@ def main(cfg):
             f.write(str(transformed_paths) + "\n" + str(transformed_end_xyz))
         
 
-        with open('/home/hornylemur/ament_ws/src/ok-robot/ok_robot_navigation/ok_robot_navigation/path_result_transformed.pkl', 'wb') as f:
+        with open('/home/hornylemur/ament_ws/src/ok-robot/ok_robot_navigation/ok_robot_navigation/path_result_transformed_Asoccerball.pkl', 'wb') as f:
             pickle.dump([transformed_paths, transformed_end_xyz], f)
 
         return paths, end_xyz
