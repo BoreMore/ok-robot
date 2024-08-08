@@ -47,7 +47,7 @@ class MyOdometrySubscriber(Node):
         self.navigation_complete = False
 
     def get_waypoints(self):
-        with open('/home/hornylemur/ament_ws/src/ok-robot/ok_robot_navigation/ok_robot_navigation/path_result_transformed_fixedsoccer.pkl', 'rb') as f:  # Python 3: open(..., 'rb')
+        with open('/home/hornylemur/ament_ws/src/ok-robot/ok_robot_navigation/ok_robot_navigation/path_result_transformed_fixedyellowbottle.pkl', 'rb') as f:  # Python 3: open(..., 'rb')
              self.path, _ = pickle.load(f)
         
         self.waypoint_number = len(self.path)
@@ -64,7 +64,7 @@ class MyOdometrySubscriber(Node):
 
             point_ahead_distance = 0.1
             point_ahead = self.position + point_ahead_distance * np.array([np.cos(yaw), np.sin(yaw)])
-            u = 0.5 * (self.target - point_ahead)
+            u = 0.35 * (self.target - point_ahead)
             self.v_cmd = np.cos(yaw) * u[0] + np.sin(yaw) * u[1]
             self.omega_cmd = 1 / point_ahead_distance * (-np.sin(yaw) * u[0] + np.cos(yaw) * u[1])
             self.move_around()
