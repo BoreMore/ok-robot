@@ -25,7 +25,7 @@ class MyOdometrySubscriber(Node):
 
         # initialize subscriber and publisher
         #self.subscription = self.create_subscription(Odometry, '/odom', self.current_position_callback, 10)
-        self.subscription = self.create_subscription(PoseStamped, '/stretch_vicon/hr_head_camera/hr_head_camera', self.current_position_callback, 10)
+        self.subscription = self.create_subscription(PoseStamped, '/stretch_vicon/hr_base/hr_base', self.current_position_callback, 10)
         self.subscription  # prevent unused variable warning
         self.publisher_move = self.create_publisher(Twist, '/stretch/cmd_vel', 10)
         timer_period_move = 0.1  # seconds
@@ -47,7 +47,7 @@ class MyOdometrySubscriber(Node):
         self.navigation_complete = False
 
     def get_waypoints(self):
-        with open('/home/hornylemur/ament_ws/src/ok-robot/ok_robot_navigation/ok_robot_navigation/path_result_transformed.pkl', 'rb') as f:  # Python 3: open(..., 'rb')
+        with open('/home/hornylemur/ament_ws/src/ok-robot/ok_robot_navigation/ok_robot_navigation/path_result_transformed_fixedsoccer.pkl', 'rb') as f:  # Python 3: open(..., 'rb')
              self.path, _ = pickle.load(f)
         
         self.waypoint_number = len(self.path)
@@ -119,12 +119,12 @@ def main(args=None):
         rclpy.spin(odom_subscriber)
 
     except SystemExit:
-        rclpy.logging.get_logger().info('Path completed, exiting script.')
+        rclpy.logging.get_logger('Quit').info('Path completed, exiting script.')
         odom_subscriber.destroy_node()
         rclpy.shutdown()
 
     except KeyboardInterrupt:
-        rclpy.logging.get_logger().info('Keyboard interrupt, exiting script.')
+        rclpy.logging.get_logger('Quit').info('Keyboard interrupt, exiting script.')
         odom_subscriber.destroy_node()
         rclpy.shutdown()
 
